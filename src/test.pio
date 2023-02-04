@@ -2,42 +2,23 @@
 
 public start:
 .wrap_target
-    set pins, 1 [3]
-    set pins, 0 [1]
-    set pins, 1 [1]
-    set pins, 0 [3]
+    set pins, 1 [29]
+    set pins, 0 [9]
+    set pins, 1 [9]
+    set pins, 0 [26]
     ; preamble end
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
+    set x, 6 ; 14 0
+    set y, 13 ; 14 1
 
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
+bit_0:
+    set pins, 1 [19] ; 0
+    set pins, 0 [18] ; 0
+    jmp x-- bit_0
 
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
-    set pins, 1 [2] ; 0
-    set pins, 0 [2] ; 0
+bit_1:
+    set pins, 1 [9]
+    set pins, 0 [8] ; 1
+    jmp y-- bit_1
 .wrap
 
 % c-sdk {
