@@ -1,0 +1,55 @@
+.program test
+
+public start:
+.wrap_target
+    set pins, 1 [3]
+    set pins, 0 [1]
+    set pins, 1 [1]
+    set pins, 0 [3]
+    ; preamble end
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+    set pins, 1 [2] ; 0
+    set pins, 0 [2] ; 0
+.wrap
+
+% c-sdk {
+static inline void test_program_init(PIO pio, uint sm, uint offset, uint pin, float div) {
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
+    pio_gpio_init(pio, pin);
+    
+    pio_sm_config c = test_program_get_default_config(offset);
+    sm_config_set_set_pins(&c, pin, 1); // for WAIT
+    sm_config_set_jmp_pin(&c, pin); // for JMP
+    sm_config_set_clkdiv(&c, div);
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
