@@ -2,5 +2,6 @@
     "cmake.configureOnOpen": false,
     "files.associations": {
         "ratio": "cpp"
-    }
+    },
+    "cortex-debug.variableUseNaturalFormat": false
 }

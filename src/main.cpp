@@ -1,5 +1,5 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 
 #include <hardware/clocks.h>
 #include <hardware/pio.h>
@@ -7,71 +7,93 @@
 #include <pico/stdlib.h>
 #include <pico/multicore.h>
 
+#include "i2s_output.pio.h"
 #include "spdif_decode.pio.h"
-#include "test.pio.h"
 
 const uint PIN_DEBUG_LED = 12;
 const uint PIN_SPDIF = 13;
-const uint PIN_DAC = 14;
 
-auto pio = pio0;
-uint sm_rx = 0;
+const uint PIN_I2S_BCK = 8;
+const uint PIN_I2S_LRCK = PIN_I2S_BCK + 1; // LRCK pin must be BCK + 1
+const uint PIN_I2S_DATA = 10;
 
-static char get_preamble(uint32_t subframe) {
+static pio_hw_t *spdif_pio = pio0;
+static uint spdif_sm = 0;
+static pio_hw_t *i2s_pio = pio1;
+static uint i2s_sm = 1;
+
+typedef uint32_t spdif_subframe;
+
+static char spdif_get_preamble(spdif_subframe subframe)
+{
 	switch (subframe & 0xF)
 	{
-		case 0x1:
-		case 0xE:
-			return 'B';
-		case 0x4:
-		case 0xB:
-			return 'M';
-		case 0x2:
-		case 0xD:
-			return 'W';
+	case 0x1:
+	case 0xE:
+		return 'B';
+	case 0x4:
+	case 0xB:
+		return 'M';
+	case 0x2:
+	case 0xD:
+		return 'W';
 	}
 
 	return '?';
 }
 
-static bool check_parity(uint32_t subframe)
+static bool spdif_check_parity(spdif_subframe subframe)
 {
 	return !!(subframe & 0x80000000) == __builtin_parity(subframe & 0x7FFFFFF0);
 }
 
-void core1_main()
+void i2s_init(uint bck_pin, uint lrck_pin, uint data_out_pin)
 {
-	gpio_init(PIN_SPDIF);
-	gpio_set_dir(PIN_SPDIF, GPIO_IN);
+	gpio_init(bck_pin);
+	gpio_init(lrck_pin);
+	gpio_init(data_out_pin);
+	gpio_set_function(bck_pin, GPIO_FUNC_PIO1);
+	gpio_set_function(lrck_pin, GPIO_FUNC_PIO1);
+	gpio_set_function(data_out_pin, GPIO_FUNC_PIO1);
 
-	gpio_set_function(PIN_DAC, GPIO_FUNC_PWM);
-	uint slice_num = pwm_gpio_to_slice_num(PIN_DAC);
-	pwm_set_clkdiv(slice_num, 1);
-	pwm_set_wrap(slice_num, 255); // Set period of 1024 cycles (0 to 1023 inclusive)
-	pwm_set_enabled(slice_num, true);
+	auto offset = pio_add_program(i2s_pio, &audio_i2s_program);
+	audio_i2s_program_init(i2s_pio, i2s_sm, offset, PIN_I2S_DATA, PIN_I2S_BCK);
+	pio_sm_set_clkdiv(i2s_pio, i2s_sm, clock_get_hz(clk_sys) / (2 * 2 * 16 * 48000.0));
+	pio_sm_set_enabled(i2s_pio, i2s_sm, true);
+}
+void spdif_init(uint spdif_pin)
+{
+	// configure I2S output
+	i2s_init(PIN_I2S_BCK, PIN_I2S_LRCK, PIN_I2S_DATA);
+
+	// configure SPDIF decoder
+	gpio_init(spdif_pin);
+	gpio_set_dir(spdif_pin, GPIO_IN);
 
 	printf("\n\nSTART clock=%ld\n", clock_get_hz(clk_sys));
-
 	uint offset = 0;
-	pio_add_program_at_offset(pio, &spdif_subframe_decode_program, offset);
+	pio_add_program_at_offset(spdif_pio, &spdif_subframe_decode_program, offset);
 	printf("spdif_subframe_decode loaded at %x\n", offset);
-	spdif_subframe_decode_program_init(pio, sm_rx, offset, PIN_SPDIF, 2);
-
-	auto full = false;
-	while (true)
-	{
-		if (pio_sm_get_rx_fifo_level(pio, sm_rx) < 1)
-			continue;
-		if (pio_sm_is_rx_fifo_full(pio, sm_rx))
-			gpio_put(PIN_DEBUG_LED, full = !full);
-
-		auto value = pio_sm_get_blocking(pio, sm_rx);
-		//pio->ctrl |= 1u << (PIO_CTRL_SM_RESTART_LSB + sm_rx); // restart
-		multicore_fifo_push_timeout_us(value, 1);
-	};
+	spdif_subframe_decode_program_init(spdif_pio, spdif_sm, offset, spdif_pin, 2);
 }
+static void spdif_to_i2s_update()
+{
+	int32_t sample = 0;
 
-#define ARRAY_LENGTH(arr) (sizeof(arr)/sizeof(*arr))
+	uint32_t sample1 = pio_sm_get_blocking(pio0, 0);
+	if (spdif_get_preamble(sample1) == 'W')
+		sample |= ((sample1 >> 12) & 0xFFFF) << 16;
+	else
+		sample |= (sample1 >> 12) & 0xFFFF;
+
+	uint32_t sample2 = pio_sm_get_blocking(pio0, 0);
+	if (spdif_get_preamble(sample2) == 'W')
+		sample |= ((sample2 >> 12) & 0xFFFF) << 16;
+	else
+		sample |= (sample2 >> 12) & 0xFFFF;
+
+	pio_sm_put(i2s_pio, i2s_sm, sample);
+}
 
 void setup()
 {
@@ -79,51 +101,20 @@ void setup()
 	gpio_set_dir(PIN_DEBUG_LED, GPIO_OUT);
 
 	gpio_put(PIN_DEBUG_LED, 1);
-	sleep_ms(1000);
+	sleep_ms(500);
 	gpio_put(PIN_DEBUG_LED, 0);
-
-	gpio_init(8);
-	gpio_set_dir(8, GPIO_OUT);
-	auto pio = pio1;
-	auto offset = pio_add_program(pio, &test_program);
-	test_program_init(pio, 1, offset, 8, 2);
-
-	multicore_launch_core1(core1_main);
-
+	sleep_ms(500);
 	gpio_put(PIN_DEBUG_LED, 1);
-	sleep_ms(1);
+	sleep_ms(500);
 	gpio_put(PIN_DEBUG_LED, 0);
+
+	spdif_init(PIN_SPDIF);
 }
 
 static auto cc = 0;
 void loop()
 {
-	static uint32_t values[16];
-
-	values[0] = multicore_fifo_pop_blocking();
-	if (get_preamble(values[0]) != 'B')
-		return;
-	for (auto cc = 1; cc < ARRAY_LENGTH(values); ++cc)
-		values[cc] = multicore_fifo_pop_blocking();
-
-	printf("[%06ld] ---- START ---- \n", time_us_32());
-	for (auto value: values)
-	{
-		auto sample = (value >> 8) & 0xFFFF;
-		{
-			printf("%c %02lx ", get_preamble(value), value & 0xFF);
-			// printf("%04lx (%06d) ", sample, (int16_t)sample);
-			// printf("%01lx", (value >> 28) & 0xF);
-			printf("%08lx  (%06d)", value, (int16_t)sample);
-		}
-		if (!check_parity(value))
-			printf(" - invalid parity\n");
-		else
-		{
-			printf("\n");
-		}
-	}
-	printf("[%06ld] ----  END  ---- \n", time_us_32());
+	spdif_to_i2s_update();
 }
 
 int main()
