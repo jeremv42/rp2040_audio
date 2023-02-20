@@ -22,7 +22,7 @@
 ; One output pin is used for the data output.
 ; Two side-set pins are used. Bit 0 is clock, bit 1 is word select.
 
-; Send 16 bit words to the PIO for mono, 32 bit words for stereo
+; Send 2*16 bit words per sample
 
 .program audio_i2s
 .side_set 2

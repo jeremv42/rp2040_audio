@@ -1,0 +1,13 @@
+[x] decode 48khz SPDIF
+[x] decode 44.1khz SPDIF
+[ ] Decode SPDIF user data
+[x] Decode more than 16bits if possible
+[x] Detect sampling rate
+[x] Detect signal lost
+[x] I²S output
+[ ] SPI output & control
+
+Nice to have
+[ ] 32 bits I²S output
+[ ] DMA
+[ ] resampling
